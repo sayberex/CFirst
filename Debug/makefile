@@ -35,7 +35,7 @@ CFirst: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) CFirst
+	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) CFirst
 	-@echo ' '
 
 .PHONY: all clean dependents

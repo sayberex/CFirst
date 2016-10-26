@@ -1,1 +1,1 @@
-src/CFirst.d: ../src/CFirst.c
+src/CFirst.o: ../src/CFirst.c
