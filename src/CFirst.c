@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <linux/if.h>
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
@@ -20,6 +21,7 @@
 #include <arpa/inet.h>
 
 #include <net/ethernet.h>	//L2 protocols
+//#include <net/if.h>
 //#include <net/if_arp.h>
 //#include <netinet/if_ether.h>
 
@@ -34,6 +36,9 @@
 //#define	MAX_FRAME_LEN	1518
 #define	MAX_FRAME_LEN	1518
 
+char	iface_name[] = "eth0";
+int		iface_index  = 0;
+
 void *pvRcvBuf;
 int   iRcvBufLen;
 
@@ -45,24 +50,65 @@ int   iRcvBufLen;
 
 int fnCreateSocket(int *socketfd);
 void fnReceiveData(int socketfd);
+void fnShowIfaces(void);
 
 int socketfd = 0;		//Socket file descriptor
 
 int main(void) {
+	//fnShowIfaces();
 
-	pvRcvBuf = (void *)malloc(MAX_FRAME_LEN);
+	//resolve net iface name to index
+	if ((iface_index = if_nametoindex(iface_name)) != 0) {
+		printf("iface_index = %d\n", iface_index);
+
+	} else {
+		printf("Iface %s not found", iface_name);
+	}
+
+	/*pvRcvBuf = (void *)malloc(MAX_FRAME_LEN);
 
 	if (fnCreateSocket(&socketfd)) {
 		do {
 			fnReceiveData(socketfd);
 		} while (1);
-	}
+	}*/
 
 	//int ch = getchar();
 	//putchar(ch);
 
 	puts("Terminated..");
 	return EXIT_SUCCESS;
+}
+
+/*int fnGetIfaceIndex(char *ifname, int *iface_index) {
+	return if_nametoindex(ifname);
+}*/
+
+int fnGetMac(char mac[6]) {
+	struct ifreq s;
+	int fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
+
+	strcpy(s.ifr_ifrn.ifrn_name,iface_name);
+	if (0 == ioctl(fd, SIOCGIFHWADDR, &s)) {
+		int	i;
+		for (i = 0; i < 6; ++i) mac[i] = s.ifr_ifru.ifru_addr.sa_data[i];
+		close(fd);
+		return 1;
+	}
+	close(fd);
+	return 0;
+}
+
+void fnShowIfaces(void) {
+	int ifIndex;
+	char ifName[30];
+
+	for (ifIndex = 0; ifIndex < 100; ifIndex++) {
+		if_indextoname(ifIndex, ifName);
+		if (ifName != NULL) {
+			puts(ifName);
+		}
+	}
 }
 
 int fnCreateSocket(int *socketfd) {
@@ -101,26 +147,33 @@ void fnReceiveData(int socketfd) {
 
 void fnSendData(int socketfd) {
 	//target address
-	struct	sockaddr_ll socket_addr;
-	//byffer for send frame
-	void *pvSndBuf = (void *)malloc(ETH_FRAME_LEN);
+	struct sockaddr_ll socket_addr = {
+		PF_PACKET,			/*sll_family*/					//Protocol family PF_PACKET - Device level Packet Socket(AF_INET(IPv4), AF_INET6(IPv6))
+		htons(ETH_P_ALL),	/*sll_protocol*/				//low level protocol ID (like CAN IrDA and so on)
+		0,					/*sll_ifindex*/					//communication interface index(eth0)
+		ARPHRD_ETHER,		/*sll_hatype*/					//ARP Protocol Hardware ID(Ethernet 10Mbps)
+		PACKET_OTHERHOST,	/*sll_pkttype*/					//PACKET Type(to all broadcast/to group multicast/to user space /to kernel space/ and so on)
+		ETH_ALEN,			/*sll_halen*/					//Ethernet address length(MAC - length)
+		{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}	//Physical layer MAC
+	};
 
-	//pointer to the ethernet header
-	unsigned char *etherhead = pvSndBuf;
+	socket_addr.sll_ifindex = iface_index;					//network interface index
 
-	//pointer to the ethernet data
-	unsigned char *data = pvSndBuf + 14;
+	void 		  *pvSndBuf 	= (void *)malloc(ETH_FRAME_LEN);//Send Packet Buffer
+	unsigned char *etherhead	= pvSndBuf;					//Ethernet header pointer
+	unsigned char *data 		= pvSndBuf + 14;			//Ethernet packet data pointer
+	struct ethhdr *eh 			= (struct ethhdr *)etherhead;//Structure pointer to Ethernet header
 
-	//another pointer to ethernet header
-	struct ethhdr *eh = (struct ethhdr *)etherhead;
 
-	int	Send_result;
 
 	//our mac address
 	unsigned char src_mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 	//other host mac addr
 	unsigned char dst_mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+
+	int	Send_result;
 
 	socket_addr.sll_family = PF_PACKET;
 	socket_addr.sll_protocol = htons(ETH_P_ALL);
